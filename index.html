@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulado ENEM Pro</title>
+    <title>Simulado ENEM Pro - Completo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
@@ -40,8 +40,11 @@
         #context-text { background-color: var(--bg-context); white-space: pre-wrap; font-size: 0.95rem; line-height: 1.6; border: 1px solid var(--border-color); }
         .sticky-score { position: sticky; top: 10px; z-index: 100; }
         .theme-toggle { cursor: pointer; font-size: 1.2rem; border: none; background: none; }
-        
         .progress { height: 8px; background-color: var(--border-color); }
+
+        /* Zoom na imagem ao passar o mouse */
+        .img-question { max-height: 450px; cursor: zoom-in; transition: transform 0.2s; }
+        .img-question:active { transform: scale(1.5); z-index: 1000; position: relative; }
     </style>
 </head>
 <body class="py-4">
@@ -59,13 +62,13 @@
                             <span class="badge bg-primary">✅ <span id="score">0</span></span>
                             <span class="badge bg-danger">❌ <span id="error-count">0</span></span>
                             <span class="badge bg-secondary"><span id="current-pos">0</span>/<span id="total-filtered">0</span></span>
-                            <button id="btn-review" class="btn btn-sm btn-outline-warning ms-1" onclick="toggleReviewMode()" title="Revisar Erros">🧐 Erros</button>
+                            <button id="btn-review" class="btn btn-sm btn-outline-warning ms-1" onclick="toggleReviewMode()">🧐 Erros</button>
                             <button class="btn btn-sm btn-outline-danger ms-1" onclick="clearProgress()">🧹</button>
                         </div>
                     </div>
                     <div class="mt-3">
                         <div class="progress">
-                            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
                         </div>
                         <small class="text-muted" style="font-size: 0.7rem;" id="progress-text">0% concluído</small>
                     </div>
@@ -76,16 +79,25 @@
         <div class="row justify-content-center">
             <div class="col-md-9">
                 <div id="quiz-container" class="card p-4">
-                    <div id="loading" class="text-center">🔍 Localizando arquivos do simulado...</div>
+                    <div id="loading" class="text-center py-5">
+                        <div class="spinner-border text-primary mb-2"></div>
+                        <div>Carregando questões do ENEM...</div>
+                    </div>
                     
                     <div id="question-content" style="display:none;">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span id="q-discipline" class="badge bg-info text-dark"></span>
-                            <span id="q-index" style="color: var(--text-muted); font-size: 0.8rem;"></span>
+                            <span id="q-index" class="text-muted small"></span>
                         </div>
+                        
                         <h4 id="q-title" class="mb-3"></h4>
+                        
                         <div id="context-text" class="p-3 rounded mb-3"></div>
+                        
+                        <div id="question-image-container" class="text-center mb-3"></div>
+                        
                         <p id="introduction" class="fw-bold"></p>
+                        
                         <div id="options" class="d-grid"></div>
                         
                         <div id="feedback" class="mt-4 p-3 rounded alert text-center" style="display:none;"></div>
@@ -110,7 +122,6 @@
         let isReviewMode = false;
         let currentYear = localStorage.getItem('enem_selected_year') || '2023';
 
-        // --- INICIALIZAÇÃO ---
         document.addEventListener('DOMContentLoaded', () => {
             const yearSelect = document.getElementById('year-select');
             for (let ano = 2023; ano >= 2009; ano--) {
@@ -136,12 +147,10 @@
             document.getElementById('theme-icon').innerText = newTheme === 'dark' ? '☀️' : '🌙';
         }
 
-        // --- CARREGAMENTO DE DADOS ---
         function loadYear() {
             currentYear = document.getElementById('year-select').value;
             localStorage.setItem('enem_selected_year', currentYear);
             
-            // Carregar progresso específico do ano
             score = parseInt(localStorage.getItem(`enem_score_${currentYear}`)) || 0;
             answeredQuestions = JSON.parse(localStorage.getItem(`enem_answered_${currentYear}`)) || [];
             wrongQuestions = JSON.parse(localStorage.getItem(`enem_errors_${currentYear}`)) || [];
@@ -152,10 +161,7 @@
             document.getElementById('question-content').style.display = 'none';
 
             fetch(`enem_${currentYear}.json`)
-                .then(response => {
-                    if (!response.ok) throw new Error();
-                    return response.json();
-                })
+                .then(res => res.json())
                 .then(data => {
                     allQuestions = data.sort((a, b) => (a.index || 0) - (b.index || 0));
                     updateDisciplineFilter();
@@ -164,21 +170,19 @@
                     filterAndReset(false);
                 })
                 .catch(() => {
-                    document.getElementById('loading').innerHTML = `❌ Erro: Arquivo <b>enem_${currentYear}.json</b> não encontrado.`;
+                    document.getElementById('loading').innerHTML = `❌ Arquivo <b>enem_${currentYear}.json</b> não encontrado.`;
                 });
         }
 
         function updateDisciplineFilter() {
             const select = document.getElementById('discipline-filter');
-            const disciplines = [...new Set(allQuestions.map(q => q.discipline))];
+            const disciplines = [...new Set(allQuestions.map(q => q.discipline))].filter(Boolean);
             select.innerHTML = '<option value="all">Todas as Matérias</option>';
             disciplines.forEach(d => {
-                if(d){
-                    const opt = document.createElement('option');
-                    opt.value = d;
-                    opt.innerText = d.charAt(0).toUpperCase() + d.slice(1);
-                    select.appendChild(opt);
-                }
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.innerText = d.charAt(0).toUpperCase() + d.slice(1);
+                select.appendChild(opt);
             });
         }
 
@@ -189,9 +193,8 @@
             if (isReviewMode) {
                 filteredQuestions = temp.filter(q => wrongQuestions.includes(q.index));
                 if (filteredQuestions.length === 0) {
-                    alert("Nenhum erro registrado nesta categoria!");
+                    alert("Nenhum erro registrado aqui!");
                     isReviewMode = false;
-                    updateReviewButtonUI();
                     filteredQuestions = temp;
                 }
             } else {
@@ -209,26 +212,17 @@
             document.getElementById('total-filtered').innerText = filteredQuestions.length;
             document.getElementById('score').innerText = score;
             document.getElementById('error-count').innerText = wrongQuestions.length;
-            updateReviewButtonUI();
-            updateProgressBar();
-        }
-
-        function updateReviewButtonUI() {
+            
             const btn = document.getElementById('btn-review');
             btn.className = isReviewMode ? 'btn btn-sm btn-warning ms-1' : 'btn btn-sm btn-outline-warning ms-1';
             btn.style.display = wrongQuestions.length > 0 ? 'inline-block' : 'none';
-        }
 
-        function updateProgressBar() {
-            const total = filteredQuestions.length;
-            if (total === 0) return;
             const done = filteredQuestions.filter(q => answeredQuestions.includes(q.index)).length;
-            const perc = Math.round((done / total) * 100);
+            const perc = filteredQuestions.length > 0 ? Math.round((done / filteredQuestions.length) * 100) : 0;
             document.getElementById('progress-bar').style.width = perc + '%';
-            document.getElementById('progress-text').innerText = `${perc}% da seleção concluída`;
+            document.getElementById('progress-text').innerText = `${perc}% da matéria concluída`;
         }
 
-        // --- LÓGICA DO QUIZ ---
         function renderQuestion() {
             const q = filteredQuestions[currentIndex];
             if (!q) return;
@@ -237,10 +231,22 @@
             document.getElementById('current-pos').innerText = currentIndex + 1;
             document.getElementById('q-discipline').innerText = (q.discipline || 'Geral').toUpperCase();
             document.getElementById('q-index').innerText = `Questão #${q.index}`;
-            document.getElementById('q-title').innerText = q.title || "Questão sem título";
+            document.getElementById('q-title').innerText = q.title || "";
             document.getElementById('context-text').innerText = q.context || "";
             document.getElementById('introduction').innerText = q.alternativesIntroduction || "";
             
+            // Renderizar Imagem
+            const imgCont = document.getElementById('question-image-container');
+            imgCont.innerHTML = '';
+            if (q.image) {
+                const img = document.createElement('img');
+                img.src = q.image;
+                img.className = 'img-fluid rounded shadow-sm border img-question';
+                img.title = "Clique e segure para ampliar";
+                img.onerror = () => imgCont.innerHTML = '<small class="text-danger">⚠️ Imagem indisponível no servidor.</small>';
+                imgCont.appendChild(img);
+            }
+
             const optionsDiv = document.getElementById('options');
             optionsDiv.innerHTML = '';
             document.getElementById('feedback').style.display = 'none';
@@ -260,9 +266,7 @@
         function checkAnswer(letter, clickedBtn) {
             const q = filteredQuestions[currentIndex];
             const correct = q.correctAlternative;
-            const buttons = document.querySelectorAll('.option-btn');
-            
-            buttons.forEach(btn => {
+            document.querySelectorAll('.option-btn').forEach(btn => {
                 btn.disabled = true;
                 if (btn.innerText.trim().startsWith(correct + ")")) btn.classList.add('correct');
             });
@@ -271,7 +275,6 @@
             feedback.style.display = 'block';
 
             if (letter === correct) {
-                // Se acertou, remove dos erros
                 wrongQuestions = wrongQuestions.filter(id => id !== q.index);
                 if (!answeredQuestions.includes(q.index)) {
                     score++;
@@ -283,7 +286,7 @@
                 if (!wrongQuestions.includes(q.index)) wrongQuestions.push(q.index);
                 clickedBtn.classList.add('wrong');
                 feedback.className = 'mt-4 p-3 rounded alert alert-danger';
-                feedback.innerHTML = `❌ <b>Incorreto.</b> A letra correta é <b>${correct}</b>`;
+                feedback.innerHTML = `❌ <b>Incorreto.</b> A correta é <b>${correct}</b>`;
             }
 
             localStorage.setItem(`enem_score_${currentYear}`, score);
@@ -303,7 +306,7 @@
         }
 
         function clearProgress() {
-            if(confirm("Deseja apagar TODO o seu progresso deste ano?")) {
+            if(confirm("Zerar progresso deste ano?")) {
                 localStorage.removeItem(`enem_score_${currentYear}`);
                 localStorage.removeItem(`enem_answered_${currentYear}`);
                 localStorage.removeItem(`enem_errors_${currentYear}`);
